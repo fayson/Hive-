@@ -1,0 +1,134 @@
+
+一、Hive不开启事务情况下，开启Concurrency
+1.Concurrency配置
+<property>
+	<name>hive.support.concurrency</name>
+	<value>true</value>
+</property>
+
+2.配置完成后重启hiveserver2
+
+3.创建一个普通的Hive表
+create table test_notransaction(user_id Int,name String);
+create table test(name string, id int);
+
+
+4.准备测试数据，向表中插入数据
+insert into test_notransaction values(1,'peach1'),(2,'peach2'),(3, 'peach3'),(4, 'peach4');
+
+5.开启Concurrency测用例
+	1)对catalog_sales表进行并发select操作
+		select count(*) from catalog_sales;
+		select count(*) from catalog_sales;
+	2)对test表进行并发insert操作
+		insert into test values('test11aaa1',1252);
+		insert into test values('test1',52);
+	3)对test表执行select的同时执行insert操作
+		select count(*) from test;
+		insert into test values("test123",123);
+	4)对test表执行insert的同时执行select操作
+		insert into test values("test123",123);
+		select count(*) from test;
+	5)对test表进行update和delete操作
+		update test set name='aaaa' where id=1252;
+		delete test set name='bbbb' where id=123;
+	
+
+二、Hive不开启事务情况下关闭Concurrency
+1.Concurrency配置
+<property>
+	<name>hive.support.concurrency</name>
+	<value>false</value>
+</property>
+
+2.配置完成后重启hiveserver2
+
+4.关闭Concurrency测试用例
+	1)执行insert操作的同时执行select操作
+		insert into test_notransaction values(1,'peach1'),(2,'peach2'),(3, 'peach3'),(4, 'peach4');
+		select count(*) from test_notransaction;
+	2)执行select操作的同时执行insert操作
+		select count(*) from test_notransaction;
+		insert into test_notransaction values(1,'peach1'),(2,'peach2'),(3, 'peach3'),(4, 'peach4');
+	3)同时执行多条insert操作
+		insert into test_notransaction values(1,'peach1'),(2,'peach2'),(3, 'peach3'),(4, 'peach4');
+		insert into test_notransaction values(1,'peach1'),(2,'peach2'),(3, 'peach3'),(4, 'peach4');
+	4)执行update操作，将表中user_id为2的用户名修改为peach22
+		update test_notransaction set name='peach22' where user_id=2;
+	5)执行delete操作，将表中user_id为1信息删除
+		delete from test_notransaction where user_id=1;
+	6)查看表获取锁类型
+		show locks;
+		
+三、Hive的事务
+1.事务配置
+<property>
+	<name>hive.support.concurrency</name>
+	<value>true</value>
+</property>
+<property>
+	<name>hive.enforce.bucketing</name>
+	<value>true</value>
+</property>
+<property>
+	<name>hive.exec.dynamic.partition.mode</name>
+	<value>nonstrict</value>
+</property>
+<property>
+	<name>hive.txn.manager</name>
+	<value>org.apache.hadoop.hive.ql.lockmgr.DbTxnManager</value>
+</property>
+<property>
+	<name>hive.compactor.initiator.on</name>
+	<value>true</value>
+</property>
+<property>
+	<name>hive.compactor.worker.threads </name>
+	<value>1</value>
+</property>
+
+2.配置完成后重启hiveserver2
+
+3.hive事务建表语句
+create table test_trancaction (user_id Int,name String) 
+clustered by (user_id) into 3 buckets stored as orc TBLPROPERTIES ('transactional'='true');
+修改表名：alter table test_trancaction rename to test_transaction;
+
+4.准备测试数据，向表中插入数据
+insert into test_transaction values(1,'peach'),(2,'peach2'),(3,'peach3'),(4,'peach4'),(5,'peach5');
+
+
+5.hive事务测试用例
+	1)执行update操作，将user_id的name修改为peach_update
+		update test_transaction set name='peach_update' where user_id=1;
+	2)同时修改同一条数据，将user_id为1的用户名字修改为peach，另一条sql将名字修改为peach_
+		update test_transaction set name='peach' where user_id=1;
+		update test_transaction set name='peach_' where user_id=1;
+	3)同时修改不同数据，修改id为2的name为peachtest，修改id为3的name为peach_test
+		update test_transaction set name='peachtest' where user_id=2;
+		update test_transaction set name='peach_test' where user_id=3;
+	4)执行select操作的同时执行insert操作
+		select count(*) from test_transaction;
+		insert into test_transaction values(3,'peach3');
+	5)update同一条数据的同时select该条数据
+		update test_transaction set name='peach_update' where user_id=1;
+		select * from test_transaction where user_id=1;
+	6)执行delete操作，将user_id为3的数据删除
+		delete from test_transaction where user_id=3;
+	7)同时delete同一条数据
+		delete from test_transaction where user_id=3;
+		delete from test_transaction where user_id=3;
+	8)同时delete两条不同的数据
+		delete from test_transaction where user_id=1;
+		delete from test_transaction where user_id=5;
+	9)执行delete的同时对删除的数据进行update操作
+		delete from test_transaction where user_id=3;
+		update test_transaction set name='test' where user_id=3;
+	10)执行delete的同时对不同的数据进行update操作
+		delete from test_transaction where user_id=2;
+		update test_transaction set name='test' where user_id=4;
+	11)执行delete的同时执行select操作
+		delete from test_transaction where user_id=4;
+		select count(*) from test_transaction;
+
+
